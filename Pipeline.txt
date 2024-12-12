@@ -1,0 +1,63 @@
+pipeline {
+    agent any
+    tools{
+        dockerTool 'docker'
+    }
+    environment {
+        SCANNER_HOME=tool 'sonar-scanner'
+    }
+    stages {
+        stage('Git Checkout'){
+            steps{
+                git branch: 'main', 
+                credentialsId: 'GITHUB', 
+                url: 'https://github.com/Rishiaathithya/Netflix-Clone-Devops.git'
+            }
+        }
+        stage('Sonarqube Analysis'){
+            steps{
+                withSonarQubeEnv('SonarQube') {
+                    sh '$SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=Netflix  -Dsonar.projectKey=Netflix'
+                }
+            }
+        }
+        stage('Install Dependencies') {
+            steps {
+                sh "npm install"
+            }
+        }
+        stage('Trivy FS Scan') {
+            steps {
+               sh 'trivy fs . > trivyfs.txt'
+            }
+        }
+        // stage('OWASP FS SCAN') {
+        //     steps {
+        //         dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+        //         dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+        //     }
+        // }
+        stage("Docker Build & Push"){
+            steps{
+                script{
+                    withDockerRegistry(credentialsId: 'Docker-Hub') {
+                       sh "docker build --build-arg TMDB_V3_API_KEY=c11683294013ecb14920d1f4d31f8a2c -t netflix ."
+                       sh "docker tag netflix rishiaathithya/netflix:latest "
+                       sh "docker push rishiaathithya/netflix:latest "
+                    }
+                }
+            }
+        }
+        stage("TRIVY"){
+            steps{
+                sh "trivy image rishiaathithya/netflix:latest > trivyimage.txt" 
+            }
+        }
+        stage('Deploy to container'){
+            steps{
+                sh 'docker run -d -p 8081:80 rishiaathithya/netflix:latest'
+            }
+        }
+    }
+    
+}s
